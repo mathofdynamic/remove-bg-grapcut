@@ -42,7 +42,11 @@ A web-based tool that uses OpenCV's GrabCut algorithm to remove backgrounds from
 - **Transparency**: The alpha channel is modified to make the background transparent, and the result is rendered on a canvas.
 
 ## Screenshots
-(Insert screenshots here, e.g., one of the UI before processing and one after. You can drag and drop images into this section on GitHub.)
+Here are examples of the input and output using the tool:
+
+| Input Image (1024x1024) | Output Image (1024x1024) |
+|-------------------------|--------------------------|
+| ![Input Image](example/input.png) | ![Output Image](example/output.png) |
 
 ## Contributing
 Contributions are welcome! Feel free to:
@@ -71,7 +75,8 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 ---
 
 ### Notes:
-- Replace `your-username` in the clone URL with your actual GitHub username.
-- For the **Demo** and **Screenshots** sections, you’ll need to add visuals yourself (e.g., GIFs or PNGs). You can record your screen or take screenshots and upload them to the repo, then link them here (e.g., `![Demo](demo.gif)`).
-- If you want to add a license file, create a `LICENSE` file in your repo with the MIT License text (or your preferred license).
-- Feel free to tweak any section to better fit your style or project goals!
+- The images are displayed in a Markdown table for a clean side-by-side comparison, which GitHub renders nicely.
+- Ensure the `example` folder with `input.png` and `output.png` is in the root of your repository and pushed to GitHub.
+- Replace `your-username` with your actual GitHub username in the clone command.
+- If you want to adjust the layout (e.g., stack the images vertically instead of a table), let me know, and I can tweak it!
+
