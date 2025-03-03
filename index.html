@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GrabCut Removal with Spinner (Dark Theme)</title>
+  <style>
+    /* ===== Dark Theme ===== */
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #1e1e1e;
+      color: #f0f0f0;
+      text-align: center;
+      font-family: Arial, sans-serif;
+    }
+    h1 {
+      margin: 20px 0;
+    }
+    
+    /* ===== Layout & Elements ===== */
+    #controls {
+      margin: 10px auto;
+    }
+    #originalImage {
+      max-width: 500px;
+      display: block;
+      margin: 10px auto;
+    }
+    #resultCanvas {
+      display: block;
+      margin: 10px auto;
+      background-color: #333; /* so we can see transparency */
+      max-width: 500px;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    /* ===== Loading Spinner Overlay ===== */
+    #overlay {
+      position: fixed;
+      top: 0; 
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.6);
+      display: none; /* hidden by default */
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    .spinner {
+      border: 8px solid #f3f3f3;
+      border-top: 8px solid #3498db; /* Spinner color */
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0%   { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <h1>GrabCut Background Removal (Dark Theme)</h1>
+
+  <!-- Controls -->
+  <div id="controls">
+    <input type="file" id="imageUpload" accept="image/*">
+    <br><br>
+    <button id="removeBgButton" disabled>Remove Background</button>
+    <button id="downloadBtn" disabled>Download PNG</button>
+  </div>
+
+  <!-- Original Image -->
+  <img id="originalImage" alt="Original Image">
+
+  <!-- Result Canvas -->
+  <canvas id="resultCanvas"></canvas>
+
+  <!-- Loading Spinner Overlay -->
+  <div id="overlay">
+    <div class="spinner"></div>
+  </div>
+
+  <script>
+    let cvModule = null;
+
+    // Called when opencv.js is loaded
+    function onOpenCvReady() {
+      console.log('OpenCV.js script loaded.');
+      if (cv instanceof Promise) {
+        // For newer Promise-based OpenCV.js
+        cv.then((resolvedCV) => {
+          console.log('OpenCV is fully initialized now!');
+          cvModule = resolvedCV;
+          document.getElementById('removeBgButton').disabled = false;
+        }).catch((err) => {
+          console.error('Error initializing OpenCV:', err);
+        });
+      } else if (typeof cv === 'object') {
+        // For older builds with onRuntimeInitialized
+        cv.onRuntimeInitialized = () => {
+          console.log('OpenCV is fully initialized (old approach)!');
+          cvModule = cv;
+          document.getElementById('removeBgButton').disabled = false;
+        };
+      } else {
+        console.error('Unrecognized cv type:', typeof cv);
+      }
+    }
+
+    // Show/Hide Spinner
+    function showSpinner() {
+      document.getElementById('overlay').style.display = 'flex';
+    }
+    function hideSpinner() {
+      document.getElementById('overlay').style.display = 'none';
+    }
+
+    // Handle file input
+    document.getElementById('imageUpload').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      const imgElem = document.getElementById('originalImage');
+      imgElem.src = URL.createObjectURL(file);
+      console.log('Image uploaded:', file.name);
+      imgElem.onload = () => {
+        console.log('Image fully loaded!');
+      };
+    });
+
+    // Remove background using GrabCut
+    document.getElementById('removeBgButton').addEventListener('click', () => {
+      if (!cvModule) {
+        console.log('OpenCV not ready yet!');
+        return;
+      }
+
+      const imgElem = document.getElementById('originalImage');
+      const canvas = document.getElementById('resultCanvas');
+      if (!imgElem || !canvas || imgElem.naturalWidth === 0) {
+        console.log('Image or canvas not found or image not loaded!');
+        return;
+      }
+
+      // Show spinner
+      showSpinner();
+
+      // Let the browser paint the spinner before blocking with GrabCut
+      // Use setTimeout to allow the spinner to appear
+      setTimeout(() => {
+        try {
+          // 1) Match canvas to image size
+          canvas.width = imgElem.width;
+          canvas.height = imgElem.height;
+
+          // 2) Read the image into a Mat (RGBA)
+          let src = cvModule.imread(imgElem);
+
+          // 3) Convert RGBA -> RGB
+          let srcRGB = new cvModule.Mat();
+          cvModule.cvtColor(src, srcRGB, cvModule.COLOR_RGBA2RGB);
+
+          // 4) Create a single-channel mask
+          let mask = new cvModule.Mat.zeros(srcRGB.rows, srcRGB.cols, cvModule.CV_8UC1);
+
+          // 5) Create background and foreground models
+          let bgdModel = new cvModule.Mat();
+          let fgdModel = new cvModule.Mat();
+
+          // 6) Define rectangle for the subject
+          let rect = new cvModule.Rect(1, 1, srcRGB.cols - 2, srcRGB.rows - 2);
+
+          // 7) Run GrabCut
+          cvModule.grabCut(srcRGB, mask, rect, bgdModel, fgdModel, 5, cvModule.GC_INIT_WITH_RECT);
+
+          // 8) Convert mask to binary: 255=foreground, 0=background
+          for (let row = 0; row < mask.rows; row++) {
+            for (let col = 0; col < mask.cols; col++) {
+              let value = mask.ucharPtr(row, col)[0];
+              if (value === cvModule.GC_FGD || value === cvModule.GC_PR_FGD) {
+                mask.ucharPtr(row, col)[0] = 255;
+              } else {
+                mask.ucharPtr(row, col)[0] = 0;
+              }
+            }
+          }
+
+          // 9) Convert srcRGB -> RGBA
+          let rgba = new cvModule.Mat();
+          cvModule.cvtColor(srcRGB, rgba, cvModule.COLOR_RGB2RGBA);
+
+          // 10) Set alpha channel from the mask
+          for (let row = 0; row < rgba.rows; row++) {
+            for (let col = 0; col < rgba.cols; col++) {
+              let maskVal = mask.ucharPtr(row, col)[0]; // 0 or 255
+              let rgbaVal = rgba.ucharPtr(row, col);
+              rgbaVal[3] = maskVal; // alpha
+            }
+          }
+
+          // 11) Display the result on the canvas
+          cvModule.imshow('resultCanvas', rgba);
+
+          // Enable download button
+          document.getElementById('downloadBtn').disabled = false;
+
+          console.log('Background removal completed!');
+
+          // Cleanup
+          src.delete();
+          srcRGB.delete();
+          mask.delete();
+          bgdModel.delete();
+          fgdModel.delete();
+          rgba.delete();
+        } catch (err) {
+          console.error('Error during GrabCut:', err);
+        } finally {
+          // Hide spinner after processing
+          hideSpinner();
+        }
+      }, 50); // small delay to let spinner appear
+    });
+
+    // Download the result as a PNG
+    document.getElementById('downloadBtn').addEventListener('click', () => {
+      const canvas = document.getElementById('resultCanvas');
+      const dataURL = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.download = 'grabcut_result.png';
+      link.href = dataURL;
+      link.click();
+    });
+  </script>
+
+  <!-- Load the Promise-based opencv.js -->
+  <script src="opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
+</body>
+</html>
